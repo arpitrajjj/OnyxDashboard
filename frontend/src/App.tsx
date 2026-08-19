@@ -55,28 +55,28 @@ export default function App() {
   }, []);
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex min-h-screen overflow-x-hidden">
       <Sidebar />
 
-      <main className="flex-1 space-y-6 px-4 py-6 pb-24 sm:px-8 sm:py-8 lg:px-10 lg:py-10 lg:pb-10">
+      <main className="flex-1 min-w-0 space-y-6 px-4 py-6 pb-24 sm:px-8 sm:py-8 lg:px-10 lg:py-10 lg:pb-10">
         {/* Top bar */}
-        <header className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <header className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+          <div className="flex min-w-0 items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
-              className="lg:hidden"
+              className="lg:hidden shrink-0"
               onClick={() => setHamburgerOpen(true)}
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
             </Button>
-            <div>
+            <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <LayoutDashboard className="h-5 w-5 text-primary lg:hidden" />
-                <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+                <LayoutDashboard className="h-5 w-5 text-primary lg:hidden shrink-0" />
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight truncate">Dashboard</h1>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="mt-1 text-xs sm:text-sm text-muted-foreground">
                 Real-time device fleet overview · tap any device to view its SMS
               </p>
             </div>

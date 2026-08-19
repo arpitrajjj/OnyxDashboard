@@ -35,9 +35,9 @@ def main():
             page.get_by_role("button", name="Open menu").click()
             time.sleep(0.5)
             page.screenshot(path=os.path.join(OUT, "mobile-hamburger.png"))
-            # Close the menu via Escape (most reliable)
+            # Close the menu via Escape, then wait for the exit animation
             page.keyboard.press("Escape")
-            time.sleep(0.5)
+            time.sleep(1.0)
         except Exception as e:
             print(f"  hamburger capture failed: {e}")
 

@@ -63,9 +63,10 @@ export function RegisterDeviceModal({ onRegistered, open, onOpenChange }: Props)
 
   return (
     <>
-      <Button onClick={() => setOpen(true)}>
+      <Button onClick={() => setOpen(true)} className="shrink-0">
         <Plus className="h-4 w-4" />
-        Register device
+        <span className="hidden sm:inline">Register device</span>
+        <span className="sm:hidden">Register</span>
       </Button>
 
       <AnimatePresence>

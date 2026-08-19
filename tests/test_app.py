@@ -12,8 +12,11 @@ import app as onyx
 def client(tmp_path):
     db = tmp_path / "test.db"
     os.environ["ONYX_DB_PATH"] = str(db)
-    # Re-init module-level DB path after env override.
+    # Use a short heartbeat timeout for the transition test so the suite
+    # doesn't take 6 seconds just to test the offline → online flip.
+    os.environ["ONYX_HEARTBEAT_TIMEOUT"] = "2"
     onyx.DB_PATH = str(db)
+    onyx.HEARTBEAT_TIMEOUT_SECONDS = 2
     onyx.init_db()
     onyx.app.config["TESTING"] = True
     with onyx.app.test_client() as c:
@@ -292,7 +295,7 @@ def test_heartbeat_publishes_device_online_on_transition(client):
     from app import _subscribers, _sub_lock, HEARTBEAT_TIMEOUT_SECONDS
     # Register a device, then wait until it's offline (last_seen older than
     # the timeout). Skip if the timeout is too large to wait for in tests.
-    if HEARTBEAT_TIMEOUT_SECONDS > 5:
+    if HEARTBEAT_TIMEOUT_SECONDS > 2:
         return
     register(client, device_id="transition-001")
     _time.sleep(HEARTBEAT_TIMEOUT_SECONDS + 1)

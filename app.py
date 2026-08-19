@@ -25,10 +25,17 @@ from flask import (
 )
 
 DB_PATH = os.environ.get("ONYX_DB_PATH") or os.path.join(
-    "/tmp" if os.path.isdir("/tmp") and os.access("/tmp", os.W_OK) else os.getcwd(),
+    # Default to a `data/` dir under the app's working directory so the DB
+    # survives cold-starts within a single deploy on Render. (Render free
+    # Docker services have an ephemeral filesystem across redeploys, but
+    # the working dir persists across in-place container restarts.)
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+    if os.access(os.path.dirname(os.path.abspath(__file__)), os.W_OK)
+    else "/tmp" if os.path.isdir("/tmp") and os.access("/tmp", os.W_OK)
+    else os.getcwd(),
     "onyxdashboard.db",
 )
-HEARTBEAT_TIMEOUT_SECONDS = int(os.environ.get("ONYX_HEARTBEAT_TIMEOUT", "60"))
+HEARTBEAT_TIMEOUT_SECONDS = int(os.environ.get("ONYX_HEARTBEAT_TIMEOUT", "5"))
 DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "dist")
 
 # CORS — comma-separated list of allowed origins. Default allows the deployed
@@ -107,6 +114,14 @@ def close_db(_exc=None):
 
 
 def init_db():
+    # Ensure the parent directory exists (the `data/` dir under the app
+    # working dir might not exist on a fresh container).
+    parent = os.path.dirname(DB_PATH)
+    if parent and not os.path.isdir(parent):
+        try:
+            os.makedirs(parent, exist_ok=True)
+        except OSError:
+            pass  # fall back to current directory
     conn = sqlite3.connect(DB_PATH)
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute(

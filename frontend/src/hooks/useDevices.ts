@@ -148,6 +148,42 @@ export function useDevices() {
     if (status === "live") refreshNow();
   }, [status, refreshNow]);
 
+  // Recompute online/offline status every 1 second.
+  //
+  // Why: a device's `online` flag is derived from `last_seen` vs the
+  // backend's heartbeat timeout (5s). If the device stops sending
+  // heartbeats, the existing in-memory device record stays "online"
+  // until the next SSE event arrives — but no event arrives when a
+  // device goes silent. This 1s tick recomputes the flag locally so
+  // the UI flips to "offline" within ~1s of the timeout expiring,
+  // without needing a server round-trip.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setDevices((prev) => {
+        let changed = false;
+        const now = Date.now();
+        const timeoutMs = 5_000;  // matches the backend's HEARTBEAT_TIMEOUT_SECONDS
+        const next = prev.map((d) => {
+          const ts = new Date(d.last_seen.endsWith("Z") ? d.last_seen : d.last_seen + "Z").getTime();
+          const isOnline = !Number.isNaN(ts) && now - ts < timeoutMs;
+          if (isOnline !== d.online) {
+            changed = true;
+            return { ...d, online: isOnline };
+          }
+          return d;
+        });
+        if (!changed) return prev;
+        // Recompute counts if anything flipped
+        const o = next.filter((x) => x.online).length;
+        setOnline(o);
+        setOffline(next.length - o);
+        setTotal(next.length);
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
   const removeDevice = useCallback(async (id: string) => {
     await api.delete(id);
     setDevices((prev) => {

@@ -33,7 +33,7 @@ export function StatGrid({ total, online, offline, loading }: Props) {
               ) : (
                 <AnimatedCounter
                   value={total}
-                  className="mt-1 block text-3xl font-bold tracking-tight text-foreground"
+                  className="mt-1 block text-2xl sm:text-3xl font-bold tracking-tight text-foreground"
                 />
               )}
               <p className="mt-1 text-xs text-muted-foreground">registered in fleet</p>
@@ -65,7 +65,7 @@ export function StatGrid({ total, online, offline, loading }: Props) {
                 <div className="mt-1 flex items-baseline gap-2">
                   <AnimatedCounter
                     value={online}
-                    className="text-3xl font-bold tracking-tight text-foreground"
+                    className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground"
                   />
                   {online > 0 && (
                     <span className="relative inline-flex h-2 w-2">
@@ -107,7 +107,7 @@ export function StatGrid({ total, online, offline, loading }: Props) {
               ) : (
                 <AnimatedCounter
                   value={offline}
-                  className="mt-1 block text-3xl font-bold tracking-tight text-foreground"
+                  className="mt-1 block text-2xl sm:text-3xl font-bold tracking-tight text-foreground"
                 />
               )}
               <p className="mt-1 text-xs text-muted-foreground">no recent heartbeat</p>
@@ -140,7 +140,7 @@ export function StatGrid({ total, online, offline, loading }: Props) {
                   <AnimatedCounter
                     value={uptime}
                     decimals={1}
-                    className="text-3xl font-bold tracking-tight text-foreground"
+                    className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground"
                   />
                   <span className="text-xl font-semibold text-muted-foreground">%</span>
                 </div>
