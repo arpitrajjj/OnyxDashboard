@@ -24,7 +24,10 @@ from flask import (
     send_from_directory, Response, stream_with_context,
 )
 
-DB_PATH = os.environ.get("ONYX_DB_PATH", "onyxdashboard.db")
+DB_PATH = os.environ.get("ONYX_DB_PATH") or os.path.join(
+    "/tmp" if os.path.isdir("/tmp") and os.access("/tmp", os.W_OK) else os.getcwd(),
+    "onyxdashboard.db",
+)
 HEARTBEAT_TIMEOUT_SECONDS = int(os.environ.get("ONYX_HEARTBEAT_TIMEOUT", "60"))
 DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "dist")
 

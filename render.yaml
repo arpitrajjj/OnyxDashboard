@@ -5,18 +5,20 @@ services:
     region: oregon
     plan: free
     dockerfilePath: ./Dockerfile
+    dockerContext: .
     healthCheckPath: /healthz
     autoDeploy: true
+    # Render free tier: 512 MB RAM, no persistent disk, ephemeral filesystem.
+    # SQLite lives at /tmp/onyxdashboard.db — re-seeded on every cold start.
+    # The frontend and backend are bundled into a single Docker image (no
+    # separate static-hosting service needed).
     envVars:
       - key: ONYX_DB_PATH
-        value: /data/onyxdashboard.db
+        value: /tmp/onyxdashboard.db
       - key: ONYX_HEARTBEAT_TIMEOUT
         value: "60"
       - key: ONYX_CORS_ORIGINS
         value: "*"
-      - key: PYTHON_VERSION
-        value: "3.12"
-    disk:
-      name: onyx-data
-      mountPath: /data
-      sizeGB: 1
+      # PORT is set automatically by Render; gunicorn binds to it.
+      # VITE_API_BASE is empty by default — same-origin (Flask serves the SPA),
+      # so the frontend talks to its own backend without any URL hardcoding.
