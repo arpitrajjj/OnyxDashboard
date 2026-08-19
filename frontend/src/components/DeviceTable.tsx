@@ -49,15 +49,15 @@ type Props = {
   onDelete: (id: string) => Promise<void>;
 };
 
-const sortKeys: { key: SortKey; label: string }[] = [
-  { key: "name", label: "Name" },
-  { key: "device_id", label: "Device ID" },
-  { key: "model", label: "Model" },
-  { key: "os_version", label: "OS" },
-  { key: "app_version", label: "App" },
-  { key: "ip_address", label: "IP" },
-  { key: "last_seen", label: "Last seen" },
-  { key: "online", label: "Status" },
+const sortKeys: { key: SortKey; label: string; hideOnMobile?: boolean }[] = [
+  { key: "name",       label: "Name" },
+  { key: "device_id",  label: "Device ID", hideOnMobile: true },
+  { key: "model",      label: "Model",     hideOnMobile: true },
+  { key: "os_version", label: "OS",        hideOnMobile: true },
+  { key: "app_version",label: "App",       hideOnMobile: true },
+  { key: "ip_address", label: "IP",        hideOnMobile: true },
+  { key: "last_seen",  label: "Last seen" },
+  { key: "online",     label: "Status" },
 ];
 
 function getSortValue(d: Device, key: SortKey): string | number {
@@ -117,11 +117,15 @@ export function DeviceTable({ devices, loading, onRefresh, onDelete }: Props) {
     }
   }
 
-  function SortHeader({ k, label }: { k: SortKey; label: string }) {
+  function SortHeader({ k, label, hideOnMobile }: { k: SortKey; label: string; hideOnMobile?: boolean }) {
     const active = k === sortKey;
     return (
       <TableHead
-        className={cn("cursor-pointer select-none", active && "text-foreground")}
+        className={cn(
+          "cursor-pointer select-none",
+          active && "text-foreground",
+          hideOnMobile && "hidden md:table-cell"
+        )}
         onClick={() => toggleSort(k)}
       >
         <span className="inline-flex items-center gap-1 hover:text-foreground">
@@ -231,17 +235,17 @@ export function DeviceTable({ devices, loading, onRefresh, onDelete }: Props) {
                         {d.name || d.device_id}
                       </div>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="hidden md:table-cell">
                       <code className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                         {d.device_id}
                       </code>
                     </TableCell>
-                    <TableCell className="text-muted-foreground">{d.model || "—"}</TableCell>
-                    <TableCell className="text-muted-foreground">{d.os_version || "—"}</TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
+                    <TableCell className="hidden md:table-cell text-muted-foreground">{d.model || "—"}</TableCell>
+                    <TableCell className="hidden md:table-cell text-muted-foreground">{d.os_version || "—"}</TableCell>
+                    <TableCell className="hidden md:table-cell font-mono text-xs text-muted-foreground">
                       {d.app_version || "—"}
                     </TableCell>
-                    <TableCell className="font-mono text-xs text-muted-foreground">
+                    <TableCell className="hidden md:table-cell font-mono text-xs text-muted-foreground">
                       {d.ip_address || "—"}
                     </TableCell>
                     <TableCell>

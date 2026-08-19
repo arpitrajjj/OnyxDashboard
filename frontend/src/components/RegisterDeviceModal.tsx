@@ -8,15 +8,24 @@ import { api } from "@/lib/api";
 
 type Props = {
   onRegistered?: () => void;
+  /** External open state — when set, the modal is controlled. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 };
 
-export function RegisterDeviceModal({ onRegistered }: Props) {
-  const [open, setOpen] = useState(false);
+export function RegisterDeviceModal({ onRegistered, open, onOpenChange }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const isOpen = open !== undefined ? open : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (onOpenChange) onOpenChange(v);
+    if (open === undefined) setInternalOpen(v);
+  };
+
   useEffect(() => {
-    if (!open) return;
+    if (!isOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
@@ -26,7 +35,7 @@ export function RegisterDeviceModal({ onRegistered }: Props) {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = "";
     };
-  }, [open]);
+  }, [isOpen]);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -60,7 +69,7 @@ export function RegisterDeviceModal({ onRegistered }: Props) {
       </Button>
 
       <AnimatePresence>
-        {open && (
+        {isOpen && (
           <div className="fixed inset-0 z-50 grid place-items-center p-4">
             <motion.div
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"

@@ -1,8 +1,10 @@
 import { motion } from "framer-motion";
 import { LayoutDashboard, RefreshCw } from "lucide-react";
+import { useCallback, useState } from "react";
 import { ApiReference } from "@/components/ApiReference";
 import { DeviceTable } from "@/components/DeviceTable";
 import { LiveIndicator } from "@/components/LiveIndicator";
+import { MobileNav } from "@/components/MobileNav";
 import { RefreshControl } from "@/components/RefreshControl";
 import { RegisterDeviceModal } from "@/components/RegisterDeviceModal";
 import { Sidebar } from "@/components/Sidebar";
@@ -28,6 +30,8 @@ export default function App() {
     connectionStatus,
   } = useDevices();
 
+  const [registerOpen, setRegisterOpen] = useState(false);
+
   async function handleDelete(id: string) {
     try {
       await removeDevice(id);
@@ -37,11 +41,16 @@ export default function App() {
     }
   }
 
+  const jumpTo = useCallback((id: string) => {
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
+
   return (
     <div className="flex min-h-screen">
       <Sidebar />
 
-      <main className="flex-1 space-y-6 px-4 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10">
+      <main className="flex-1 space-y-6 px-4 py-6 pb-24 sm:px-8 sm:py-8 lg:px-10 lg:py-10 lg:pb-10">
         {/* Top bar */}
         <header className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -53,9 +62,11 @@ export default function App() {
               Real-time device fleet overview with live heartbeat tracking
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <LiveIndicator status={connectionStatus} />
             <RegisterDeviceModal
+              open={registerOpen}
+              onOpenChange={setRegisterOpen}
               onRegistered={() => {
                 toast("Device registered", "success");
                 refreshNow();
@@ -75,10 +86,13 @@ export default function App() {
         )}
 
         {/* Stats */}
-        <StatGrid total={total} online={online} offline={offline} loading={loading} />
+        <section id="stats">
+          <StatGrid total={total} online={online} offline={offline} loading={loading} />
+        </section>
 
         {/* Devices panel */}
         <motion.section
+          id="devices"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.1 }}
@@ -107,12 +121,21 @@ export default function App() {
         </motion.section>
 
         {/* API Reference */}
-        <ApiReference />
+        <section id="api">
+          <ApiReference />
+        </section>
 
         <footer className="pt-6 text-center text-xs text-muted-foreground">
           OnyxDashboard · powered by Flask + React + Vite + Tailwind · SSE-driven real-time
         </footer>
       </main>
+
+      {/* Mobile bottom nav — visible only on small screens (lg:hidden). */}
+      <MobileNav
+        onRefresh={() => refreshNow()}
+        onRegister={() => setRegisterOpen(true)}
+        onJumpTo={jumpTo}
+      />
 
       <ToastViewport />
     </div>
