@@ -7,6 +7,7 @@ import {
   Smartphone,
   X,
 } from "lucide-react";
+import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 
 type NavItem = {
@@ -32,6 +33,20 @@ type Props = {
  * Visible only on screens narrower than `lg` — desktop uses the Sidebar.
  */
 export function HamburgerMenu({ open, onOpenChange, onJumpTo }: Props) {
+  // Close on Escape (better UX + works for accessibility)
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onOpenChange(false);
+    };
+    window.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [open, onOpenChange]);
+
   return (
     <AnimatePresence>
       {open && (
