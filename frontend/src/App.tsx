@@ -1,10 +1,12 @@
 import { motion } from "framer-motion";
-import { LayoutDashboard, RefreshCw } from "lucide-react";
+import { LayoutDashboard, Menu, RefreshCw } from "lucide-react";
 import { useCallback, useState } from "react";
 import { ApiReference } from "@/components/ApiReference";
+import { DeviceSmsDrawer } from "@/components/DeviceSmsDrawer";
 import { DeviceTable } from "@/components/DeviceTable";
+import { HamburgerMenu } from "@/components/HamburgerMenu";
 import { LiveIndicator } from "@/components/LiveIndicator";
-import { MobileNav } from "@/components/MobileNav";
+import { OnlineToasts } from "@/components/OnlineToasts";
 import { RefreshControl } from "@/components/RefreshControl";
 import { RegisterDeviceModal } from "@/components/RegisterDeviceModal";
 import { Sidebar } from "@/components/Sidebar";
@@ -13,6 +15,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { ToastViewport, toast } from "@/components/Toast";
 import { useDevices } from "@/hooks/useDevices";
 import { Button } from "@/components/ui/button";
+import type { Device } from "@/types";
 
 export default function App() {
   const {
@@ -28,9 +31,14 @@ export default function App() {
     refreshNow,
     removeDevice,
     connectionStatus,
+    incomingSms,
+    onlineToasts,
+    dismissToast,
   } = useDevices();
 
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [hamburgerOpen, setHamburgerOpen] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState<Device | null>(null);
 
   async function handleDelete(id: string) {
     try {
@@ -53,14 +61,25 @@ export default function App() {
       <main className="flex-1 space-y-6 px-4 py-6 pb-24 sm:px-8 sm:py-8 lg:px-10 lg:py-10 lg:pb-10">
         {/* Top bar */}
         <header className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <LayoutDashboard className="h-5 w-5 text-primary lg:hidden" />
-              <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="lg:hidden"
+              onClick={() => setHamburgerOpen(true)}
+              aria-label="Open menu"
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+            <div>
+              <div className="flex items-center gap-2">
+                <LayoutDashboard className="h-5 w-5 text-primary lg:hidden" />
+                <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
+              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Real-time device fleet overview · tap any device to view its SMS
+              </p>
             </div>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Real-time device fleet overview with live heartbeat tracking
-            </p>
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <LiveIndicator status={connectionStatus} />
@@ -102,7 +121,7 @@ export default function App() {
             <div>
               <h2 className="text-lg font-semibold">Devices</h2>
               <p className="text-sm text-muted-foreground">
-                Live table with online/offline status badges — click any column to sort.
+                Live table — click any row to view that device's real-time SMS.
               </p>
             </div>
             <RefreshControl
@@ -117,6 +136,7 @@ export default function App() {
             loading={loading}
             onRefresh={() => refreshNow()}
             onDelete={handleDelete}
+            onSelectDevice={setSelectedDevice}
           />
         </motion.section>
 
@@ -130,11 +150,21 @@ export default function App() {
         </footer>
       </main>
 
-      {/* Mobile bottom nav — visible only on small screens (lg:hidden). */}
-      <MobileNav
-        onRefresh={() => refreshNow()}
-        onRegister={() => setRegisterOpen(true)}
+      {/* Mobile slide-in hamburger menu */}
+      <HamburgerMenu
+        open={hamburgerOpen}
+        onOpenChange={setHamburgerOpen}
         onJumpTo={jumpTo}
+      />
+
+      {/* Online toast notifications (driven by SSE device_online events) */}
+      <OnlineToasts toasts={onlineToasts} onDismiss={dismissToast} />
+
+      {/* Device SMS drawer — opens when a device row is tapped */}
+      <DeviceSmsDrawer
+        device={selectedDevice}
+        onClose={() => setSelectedDevice(null)}
+        incomingSms={incomingSms}
       />
 
       <ToastViewport />

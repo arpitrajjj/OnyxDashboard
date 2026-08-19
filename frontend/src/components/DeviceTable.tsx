@@ -47,6 +47,7 @@ type Props = {
   loading: boolean;
   onRefresh: () => void;
   onDelete: (id: string) => Promise<void>;
+  onSelectDevice?: (device: Device) => void;
 };
 
 const sortKeys: { key: SortKey; label: string; hideOnMobile?: boolean }[] = [
@@ -75,7 +76,7 @@ function deviceIcon(d: Device) {
   return <Smartphone className="h-3.5 w-3.5" />;
 }
 
-export function DeviceTable({ devices, loading, onRefresh, onDelete }: Props) {
+export function DeviceTable({ devices, loading, onRefresh, onDelete, onSelectDevice }: Props) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "online" | "offline">("all");
   const [sortKey, setSortKey] = useState<SortKey>("last_seen");
@@ -207,7 +208,11 @@ export function DeviceTable({ devices, loading, onRefresh, onDelete }: Props) {
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
                     transition={{ duration: 0.15 }}
-                    className="border-b border-border transition-colors hover:bg-muted/40"
+                    onClick={() => onSelectDevice?.(d)}
+                    className={cn(
+                      "border-b border-border transition-colors hover:bg-muted/40",
+                      onSelectDevice && "cursor-pointer"
+                    )}
                   >
                     <TableCell>
                       <Badge
@@ -271,7 +276,10 @@ export function DeviceTable({ devices, loading, onRefresh, onDelete }: Props) {
                               variant="ghost"
                               size="icon"
                               className="h-8 w-8 text-muted-foreground hover:text-danger"
-                              onClick={() => onDelete(d.device_id)}
+                              onClick={(ev) => {
+                                ev.stopPropagation();
+                                onDelete(d.device_id);
+                              }}
                               aria-label="Delete device"
                             >
                               <Trash2 className="h-3.5 w-3.5" />

@@ -68,6 +68,24 @@ export function useSSE() {
         } catch { /* ignore */ }
       });
 
+      src.addEventListener("device_online", (ev) => {
+        try {
+          dispatch({ type: "device_online", data: JSON.parse((ev as MessageEvent).data) });
+        } catch { /* ignore */ }
+      });
+
+      src.addEventListener("device_offline", (ev) => {
+        try {
+          dispatch({ type: "device_offline", data: JSON.parse((ev as MessageEvent).data) });
+        } catch { /* ignore */ }
+      });
+
+      src.addEventListener("sms_received", (ev) => {
+        try {
+          dispatch({ type: "sms_received", data: JSON.parse((ev as MessageEvent).data) });
+        } catch { /* ignore */ }
+      });
+
       src.addEventListener("error", () => {
         setStatus("error");
         src.close();

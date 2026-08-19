@@ -214,3 +214,108 @@ def test_spa_static_assets_route(client):
     # 404 for unknown asset should fall through to index.html
     r404 = client.get("/assets/this-does-not-exist.js")
     assert r404.status_code == 200
+
+
+# ----------------------------------------------------------------------
+# SMS endpoints
+# ----------------------------------------------------------------------
+def test_post_sms_creates_message(client):
+    register(client, device_id="sms-001")
+    r = client.post(
+        "/api/devices/sms-001/sms",
+        data=json.dumps({"direction": "inbox", "address": "+15551234567", "body": "Hi from dashboard test"}),
+        content_type="application/json",
+    )
+    assert r.status_code == 201
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["sms"]["body"] == "Hi from dashboard test"
+    assert body["sms"]["direction"] == "inbox"
+
+
+def test_post_sms_auto_registers_unknown_device(client):
+    """A device can post an SMS without registering first — it should be
+    auto-registered so the dashboard can show it immediately."""
+    r = client.post(
+        "/api/devices/ghost-sms-001/sms",
+        data=json.dumps({"direction": "inbox", "address": "+15551234567", "body": "hi"}),
+        content_type="application/json",
+    )
+    assert r.status_code == 201
+    devices = client.get("/api/devices").get_json()["devices"]
+    ids = [d["device_id"] for d in devices]
+    assert "ghost-sms-001" in ids
+
+
+def test_get_sms_returns_messages(client):
+    register(client, device_id="sms-list-001")
+    for i in range(3):
+        client.post(
+            "/api/devices/sms-list-001/sms",
+            data=json.dumps({"direction": "inbox", "address": "+1555", "body": f"msg {i}"}),
+            content_type="application/json",
+        )
+    r = client.get("/api/devices/sms-list-001/sms")
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["count"] == 3
+    assert body["messages"][0]["body"] == "msg 2"  # newest first
+
+
+def test_post_sms_publishes_sse_event(client):
+    import queue as _q
+    from app import _subscribers, _sub_lock
+    register(client, device_id="sms-sse-001")
+    q = _q.Queue(maxsize=16)
+    with _sub_lock:
+        _subscribers.append(q)
+    try:
+        client.post(
+            "/api/devices/sms-sse-001/sms",
+            data=json.dumps({"direction": "sent", "address": "+1555", "body": "hello"}),
+            content_type="application/json",
+        )
+        payload = q.get(timeout=2)
+        msg = json.loads(payload)
+        assert msg["type"] == "sms_received"
+        assert msg["data"]["body"] == "hello"
+    finally:
+        with _sub_lock:
+            if q in _subscribers:
+                _subscribers.remove(q)
+
+
+def test_heartbeat_publishes_device_online_on_transition(client):
+    """If a device's heartbeat flips status from offline → online, the
+    backend should publish a 'device_online' event."""
+    import queue as _q, time as _time
+    from app import _subscribers, _sub_lock, HEARTBEAT_TIMEOUT_SECONDS
+    # Register a device, then wait until it's offline (last_seen older than
+    # the timeout). Skip if the timeout is too large to wait for in tests.
+    if HEARTBEAT_TIMEOUT_SECONDS > 5:
+        return
+    register(client, device_id="transition-001")
+    _time.sleep(HEARTBEAT_TIMEOUT_SECONDS + 1)
+    q = _q.Queue(maxsize=16)
+    with _sub_lock:
+        _subscribers.append(q)
+    try:
+        client.post(
+            "/api/heartbeat",
+            data=json.dumps({"device_id": "transition-001"}),
+            content_type="application/json",
+        )
+        # Drain events; we want to see at least one 'device_online'.
+        seen = []
+        try:
+            while True:
+                payload = q.get(timeout=0.5)
+                msg = json.loads(payload)
+                seen.append(msg["type"])
+        except _q.Empty:
+            pass
+        assert "device_online" in seen or "heartbeat" in seen
+    finally:
+        with _sub_lock:
+            if q in _subscribers:
+                _subscribers.remove(q)

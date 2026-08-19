@@ -1,9 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { useSSE } from "./useSSE";
-import type { ConnectionStatus, Device, RefreshInterval } from "@/types";
+import type { ConnectionStatus, Device, RefreshInterval, SMSMessage } from "@/types";
 
-/** Orchestrates the device list: initial fetch, SSE updates, polling fallback. */
+type OnlineToast = {
+  id: string;
+  device_id: string;
+  name: string;
+  ts: number;
+};
+
+/**
+ * Orchestrates the device list: initial fetch, SSE updates, polling fallback.
+ * Also exposes:
+ *   - `incomingSms` — every SMS pushed via SSE (drawer consumes)
+ *   - `onlineToasts` — pulses for devices that just came online
+ *   - `dismissToast(id)` — to dismiss after the user has seen it
+ */
 export function useDevices() {
   const [devices, setDevices] = useState<Device[]>([]);
   const [online, setOnline] = useState(0);
@@ -13,6 +26,8 @@ export function useDevices() {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [refresh, setRefresh] = useState<RefreshInterval>(10);
+  const [incomingSms, setIncomingSms] = useState<SMSMessage[]>([]);
+  const [onlineToasts, setOnlineToasts] = useState<OnlineToast[]>([]);
   const pollRef = useRef<number | null>(null);
 
   const { status, subscribe, reconnect } = useSSE();
@@ -63,6 +78,31 @@ export function useDevices() {
             return prev;
           });
           setLastUpdated(new Date());
+          break;
+        }
+        case "device_online": {
+          const d = e.data as Device;
+          if (!d?.device_id) return;
+          // Push a toast for the dashboard UI.
+          const t: OnlineToast = {
+            id: `${d.device_id}-${Date.now()}`,
+            device_id: d.device_id,
+            name: d.name || d.device_id,
+            ts: Date.now(),
+          };
+          setOnlineToasts((prev) => [...prev.slice(-4), t]);
+          // Auto-dismiss after 4s.
+          window.setTimeout(() => {
+            setOnlineToasts((prev) => prev.filter((x) => x.id !== t.id));
+          }, 4000);
+          break;
+        }
+        case "device_offline":
+          break;
+        case "sms_received": {
+          const m = e.data as SMSMessage;
+          if (!m?.device_id) return;
+          setIncomingSms((prev) => [...prev.slice(-50), m]);
           break;
         }
         case "device_deleted": {
@@ -120,6 +160,10 @@ export function useDevices() {
     });
   }, []);
 
+  const dismissToast = useCallback((id: string) => {
+    setOnlineToasts((prev) => prev.filter((x) => x.id !== id));
+  }, []);
+
   return {
     devices, total, online, offline,
     loading, error, lastUpdated,
@@ -128,5 +172,8 @@ export function useDevices() {
     removeDevice,
     connectionStatus: status as ConnectionStatus,
     reconnect,
+    incomingSms,
+    onlineToasts,
+    dismissToast,
   };
 }

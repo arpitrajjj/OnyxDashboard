@@ -124,6 +124,22 @@ def init_db():
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS device_sms (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            device_id     TEXT NOT NULL,
+            direction     TEXT NOT NULL,  -- 'inbox' or 'sent'
+            address       TEXT,           -- sender (inbox) or recipient (sent)
+            body          TEXT,
+            received_at  TEXT NOT NULL
+        )
+        """
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_sms_device_time "
+        "ON device_sms (device_id, received_at DESC)"
+    )
     conn.commit()
     conn.close()
 
@@ -185,6 +201,7 @@ def api_register():
 
     db = get_db()
     existing = _get_device(device_id)
+    was_online = _is_online(existing["last_seen"]) if existing else False
     db.execute(
         """
         INSERT INTO devices
@@ -206,7 +223,14 @@ def api_register():
     row = _get_device(device_id)
     device = _serialize_device(row) if row else None
     if device:
-        _publish("device_registered" if existing is None else "device_updated", device)
+        if existing is None:
+            # First registration — device is brand new (online by definition).
+            _publish("device_registered", device)
+            _publish("device_online", device)
+        else:
+            _publish("device_updated", device)
+            if not was_online and device["online"]:
+                _publish("device_online", device)
 
     return jsonify(
         {
@@ -227,6 +251,8 @@ def api_heartbeat():
 
     now = datetime.utcnow().isoformat()
     db = get_db()
+    existing = _get_device(device_id)
+    was_online = _is_online(existing["last_seen"]) if existing else False
     cur = db.execute("UPDATE devices SET last_seen=? WHERE device_id=?", (now, device_id))
     db.commit()
 
@@ -237,6 +263,11 @@ def api_heartbeat():
     device = _serialize_device(row) if row else None
     if device:
         _publish("heartbeat", device)
+        # Publish a device_online event only if this heartbeat flipped the
+        # status from offline → online. The dashboard UI uses this to show
+        # a toast "Device X came online".
+        if not was_online and device["online"]:
+            _publish("device_online", device)
 
     return jsonify(
         {
@@ -286,11 +317,82 @@ def api_devices():
 def api_delete_device(device_id):
     db = get_db()
     cur = db.execute("DELETE FROM devices WHERE device_id=?", (device_id,))
+    db.execute("DELETE FROM device_sms WHERE device_id=?", (device_id,))
     db.commit()
     if cur.rowcount == 0:
         return jsonify({"ok": False, "error": "device not found"}), 404
     _publish("device_deleted", {"device_id": device_id})
     return jsonify({"ok": True, "device_id": device_id})
+
+
+# ---------------------------------------------------------------------------
+# SMS endpoints — Android app posts incoming/outgoing SMS, dashboard reads
+# ---------------------------------------------------------------------------
+def _serialize_sms(row: sqlite3.Row) -> dict:
+    return {
+        "id": row["id"],
+        "device_id": row["device_id"],
+        "direction": row["direction"],   # 'inbox' or 'sent'
+        "address": row["address"],
+        "body": row["body"],
+        "received_at": row["received_at"],
+    }
+
+
+@app.post("/api/devices/<device_id>/sms")
+def api_post_sms(device_id):
+    payload = request.get_json(silent=True) or {}
+    direction = (payload.get("direction") or "inbox").strip().lower()
+    if direction not in ("inbox", "sent"):
+        return jsonify({"ok": False, "error": "direction must be 'inbox' or 'sent'"}), 400
+    address = (payload.get("address") or "").strip()
+    body = payload.get("body") or ""
+    now = datetime.utcnow().isoformat()
+
+    db = get_db()
+    # Auto-register the device if not already present so an SMS-first device
+    # doesn't 404 on its first SMS post.
+    existing = _get_device(device_id)
+    if existing is None:
+        db.execute(
+            "INSERT INTO devices (device_id, name, model, os_version, app_version, "
+            "ip_address, metadata, registered_at, last_seen) "
+            "VALUES (?, ?, ?, '', '', '', '', ?, ?)",
+            (device_id, device_id, "Unknown", now, now),
+        )
+        db.commit()
+        _publish("device_registered", _serialize_device(_get_device(device_id)))
+
+    cur = db.execute(
+        "INSERT INTO device_sms (device_id, direction, address, body, received_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (device_id, direction, address, body, now),
+    )
+    db.commit()
+    sms_id = cur.lastrowid
+    sms = _serialize_sms(db.execute(
+        "SELECT * FROM device_sms WHERE id=?", (sms_id,)
+    ).fetchone())
+    _publish("sms_received", sms)
+    return jsonify({"ok": True, "sms": sms}), 201
+
+
+@app.get("/api/devices/<device_id>/sms")
+def api_get_sms(device_id):
+    limit = int(request.args.get("limit", "50"))
+    if limit < 1 or limit > 500:
+        limit = 50
+    rows = get_db().execute(
+        "SELECT * FROM device_sms WHERE device_id=? ORDER BY datetime(received_at) DESC LIMIT ?",
+        (device_id, limit),
+    ).fetchall()
+    messages = [_serialize_sms(r) for r in rows]
+    return jsonify({
+        "ok": True,
+        "count": len(messages),
+        "device_id": device_id,
+        "messages": messages,
+    })
 
 
 # ---------------------------------------------------------------------------

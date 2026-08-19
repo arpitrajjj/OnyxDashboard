@@ -18,8 +18,32 @@ export type DeviceListResponse = {
   devices: Device[];
 };
 
+export type SMSMessage = {
+  id: number;
+  device_id: string;
+  direction: "inbox" | "sent";
+  address: string;
+  body: string;
+  received_at: string;
+};
+
+export type SMSListResponse = {
+  ok: boolean;
+  count: number;
+  device_id: string;
+  messages: SMSMessage[];
+};
+
 export type SSEEvent<T = unknown> = {
-  type: "hello" | "device_updated" | "device_registered" | "device_deleted" | "heartbeat";
+  type:
+    | "hello"
+    | "device_updated"
+    | "device_registered"
+    | "device_deleted"
+    | "heartbeat"
+    | "device_online"
+    | "device_offline"
+    | "sms_received";
   data: T;
   ts?: string;
 };

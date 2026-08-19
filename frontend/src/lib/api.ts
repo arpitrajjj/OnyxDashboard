@@ -1,4 +1,4 @@
-import type { DeviceListResponse, Device } from "@/types";
+import type { DeviceListResponse, Device, SMSListResponse, SMSMessage } from "@/types";
 
 /**
  * API base URL — defaults to same-origin (so the React SPA served by Flask
@@ -50,6 +50,13 @@ export const api = {
       { method: "DELETE" }
     ),
   health: () => json<{ ok: boolean; service: string; time: string }>(`${API_BASE}/healthz`),
+  listSms: (deviceId: string, limit = 100) =>
+    json<SMSListResponse>(`${API_BASE}/api/devices/${encodeURIComponent(deviceId)}/sms?limit=${limit}`),
+  postSms: (deviceId: string, payload: { direction: "inbox" | "sent"; address: string; body: string }) =>
+    json<{ ok: boolean; sms: SMSMessage }>(
+      `${API_BASE}/api/devices/${encodeURIComponent(deviceId)}/sms`,
+      { method: "POST", body: JSON.stringify(payload) }
+    ),
 };
 
 /** SSE endpoint URL. Same origin in production. */
