@@ -1,16 +1,88 @@
 """
-OnyxDashboard - Flask web dashboard for managing Android devices.
-Provides device registration, heartbeat tracking, and a clean dark-themed UI.
+OnyxDashboard - Flask backend for managing Android devices registered by the
+OnyxBridge native library.
+
+Provides:
+  * REST API: /api/register, /api/heartbeat, /api/devices, /api/devices/<id>
+  * SSE stream: /api/events  (live device updates, no polling required)
+  * SPA hosting: serves the React build at / when static/dist exists
+  * SQLite storage with WAL mode for high concurrency
+
+The dashboard UI is built with React + Vite + Tailwind in ./frontend and
+compiled into ./static/dist by `npm run build` (or by the Docker multi-stage
+build).  In dev, run `flask run` and `npm run dev` separately — Vite proxies
+/api to the Flask process.
 """
+import json
 import os
+import queue
 import sqlite3
+import threading
 from datetime import datetime, timedelta
-from flask import Flask, request, jsonify, render_template, g, abort
+from flask import (
+    Flask, request, jsonify, render_template, g, abort,
+    send_from_directory, Response, stream_with_context,
+)
 
 DB_PATH = os.environ.get("ONYX_DB_PATH", "onyxdashboard.db")
 HEARTBEAT_TIMEOUT_SECONDS = int(os.environ.get("ONYX_HEARTBEAT_TIMEOUT", "60"))
+DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "dist")
 
-app = Flask(__name__)
+# CORS — comma-separated list of allowed origins. Default allows the deployed
+# Render URL and localhost dev origins. Use "*" to allow any (not recommended
+# for production with credentials, but fine for SSE since we use no cookies).
+CORS_ORIGINS = [
+    o.strip() for o in os.environ.get("ONYX_CORS_ORIGINS", "*").split(",") if o.strip()
+] or ["*"]
+
+app = Flask(__name__, static_folder=None)  # disable default static handler; we mount explicitly
+
+
+# ---------------------------------------------------------------------------
+# CORS — applied to every response, including SSE preflight
+# ---------------------------------------------------------------------------
+@app.after_request
+def _apply_cors(resp):
+    origin = request.headers.get("Origin")
+    if origin and ("*" in CORS_ORIGINS or origin in CORS_ORIGINS):
+        resp.headers["Access-Control-Allow-Origin"] = origin if "*" not in CORS_ORIGINS else "*"
+        resp.headers["Vary"] = "Origin"
+        resp.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+        resp.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        resp.headers["Access-Control-Allow-Credentials"] = "false"
+    return resp
+
+
+@app.before_request
+def _handle_preflight():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+
+# ---------------------------------------------------------------------------
+# In-memory pub/sub for SSE
+# ---------------------------------------------------------------------------
+_subscribers: "list[queue.Queue]" = []
+_sub_lock = threading.Lock()
+
+
+def _publish(event_type: str, data: dict) -> None:
+    """Push an SSE event to every connected /api/events client."""
+    if not _subscribers:
+        return
+    msg = {
+        "type": event_type,
+        "data": data,
+        "ts": datetime.utcnow().isoformat(),
+    }
+    payload = json.dumps(msg, default=str)
+    with _sub_lock:
+        for q in list(_subscribers):
+            try:
+                q.put_nowait(payload)
+            except queue.Full:
+                # Drop slow subscribers — they'll re-sync via polling fallback.
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -79,6 +151,12 @@ def _serialize_device(row: sqlite3.Row) -> dict:
     }
 
 
+def _get_device(device_id: str) -> "sqlite3.Row | None":
+    return get_db().execute(
+        "SELECT * FROM devices WHERE device_id=?", (device_id,)
+    ).fetchone()
+
+
 # ---------------------------------------------------------------------------
 # API routes
 # ---------------------------------------------------------------------------
@@ -94,10 +172,16 @@ def api_register():
     model = (payload.get("model") or "Unknown").strip()
     os_version = (payload.get("os_version") or "").strip()
     app_version = (payload.get("app_version") or "").strip()
-    ip_address = payload.get("ip_address") or request.headers.get("X-Forwarded-For") or request.remote_addr or ""
+    ip_address = (
+        payload.get("ip_address")
+        or request.headers.get("X-Forwarded-For")
+        or request.remote_addr
+        or ""
+    )
     metadata = payload.get("metadata") or ""
 
     db = get_db()
+    existing = _get_device(device_id)
     db.execute(
         """
         INSERT INTO devices
@@ -115,6 +199,11 @@ def api_register():
         (device_id, name, model, os_version, app_version, ip_address, metadata, now, now),
     )
     db.commit()
+
+    row = _get_device(device_id)
+    device = _serialize_device(row) if row else None
+    if device:
+        _publish("device_registered" if existing is None else "device_updated", device)
 
     return jsonify(
         {
@@ -140,6 +229,11 @@ def api_heartbeat():
 
     if cur.rowcount == 0:
         return jsonify({"ok": False, "error": "device not registered"}), 404
+
+    row = _get_device(device_id)
+    device = _serialize_device(row) if row else None
+    if device:
+        _publish("heartbeat", device)
 
     return jsonify(
         {
@@ -192,15 +286,82 @@ def api_delete_device(device_id):
     db.commit()
     if cur.rowcount == 0:
         return jsonify({"ok": False, "error": "device not found"}), 404
+    _publish("device_deleted", {"device_id": device_id})
     return jsonify({"ok": True, "device_id": device_id})
 
 
 # ---------------------------------------------------------------------------
-# Web UI
+# SSE stream — /api/events
+# ---------------------------------------------------------------------------
+@app.get("/api/events")
+def api_events():
+    q: "queue.Queue[str]" = queue.Queue(maxsize=256)
+    with _sub_lock:
+        _subscribers.append(q)
+
+    def stream():
+        try:
+            # Initial hello — client knows the stream is alive immediately.
+            hello = json.dumps({"connected": True, "time": datetime.utcnow().isoformat()})
+            yield f"event: hello\ndata: {hello}\n\n"
+            while True:
+                try:
+                    payload = q.get(timeout=15)
+                    # payload is the inner JSON for the `data` field; we wrap
+                    # it into an SSE message tagged with the event type.
+                    msg = json.loads(payload)
+                    event_type = msg.get("type", "message")
+                    data_field = json.dumps(msg.get("data", {}), default=str)
+                    yield f"event: {event_type}\ndata: {data_field}\n\n"
+                except queue.Empty:
+                    # Keep-alive comment — proxies and load balancers won't
+                    # close the connection if they see traffic.
+                    yield ": ping\n\n"
+        finally:
+            with _sub_lock:
+                if q in _subscribers:
+                    _subscribers.remove(q)
+
+    headers = {
+        "Content-Type": "text/event-stream; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        # Disable buffering in nginx / Render's proxy
+        "X-Accel-Buffering": "no",
+    }
+    return Response(stream_with_context(stream()), headers=headers)
+
+
+# ---------------------------------------------------------------------------
+# SPA hosting — serve the React build from static/dist if present
 # ---------------------------------------------------------------------------
 @app.get("/")
-def dashboard():
-    return render_template("dashboard.html")
+def spa_index():
+    index = os.path.join(DIST_DIR, "index.html")
+    if os.path.exists(index):
+        return send_from_directory(DIST_DIR, "index.html")
+    # Fallback to legacy Jinja template (only exists for very old deployments)
+    try:
+        return render_template("dashboard.html")
+    except Exception:
+        return (
+            "OnyxDashboard backend is running. Build the React frontend with "
+            "`npm run build` in ./frontend to see the dashboard.",
+            200,
+        )
+
+
+@app.get("/<path:path>")
+def spa_static(path):
+    """Serve Vite assets or fall back to index.html for client-side routes."""
+    full = os.path.join(DIST_DIR, path)
+    if os.path.isfile(full):
+        return send_from_directory(DIST_DIR, path)
+    # Vite usually nests assets under /assets/<hash>.{js,css}
+    index = os.path.join(DIST_DIR, "index.html")
+    if os.path.exists(index):
+        return send_from_directory(DIST_DIR, "index.html")
+    abort(404)
 
 
 @app.get("/healthz")

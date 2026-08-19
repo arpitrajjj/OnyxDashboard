@@ -1,3 +1,4 @@
+# Python
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -17,3 +18,11 @@ venv/
 .vscode/
 *.swp
 .DS_Store
+
+# Frontend (Node)
+frontend/node_modules/
+frontend/.vite/
+frontend/dist/
+# Built SPA bundle — built fresh by CI and the multi-stage Dockerfile.
+# Do NOT commit; the source under frontend/ is the source of truth.
+static/dist/

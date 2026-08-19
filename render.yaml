@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: onyxdashboard
+    runtime: docker
+    region: oregon
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: ONYX_DB_PATH
+        value: /data/onyxdashboard.db
+      - key: ONYX_HEARTBEAT_TIMEOUT
+        value: "60"
+      - key: ONYX_CORS_ORIGINS
+        value: "*"
+      - key: PYTHON_VERSION
+        value: "3.12"
+    disk:
+      name: onyx-data
+      mountPath: /data
+      sizeGB: 1

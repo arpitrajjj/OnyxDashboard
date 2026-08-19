@@ -19,40 +19,57 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: Install dependencies
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Lint (syntax check)
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+
+      - name: Typecheck frontend
+        working-directory: frontend
+        run: npx tsc -b --noEmit
+
+      - name: Build frontend (Vite)
+        working-directory: frontend
+        run: npm run build
+
+      - name: Lint backend (syntax check)
         run: |
           python -m py_compile app.py
           echo "Syntax OK"
 
-      - name: Run tests
+      - name: Run backend tests
         env:
           ONYX_DB_PATH: /tmp/test_onyx.db
-        run: |
-          pytest -v --tb=short || pytest -v --tb=short
+        run: pytest -v --tb=short
 
-      - name: Smoke test app boots
+      - name: Smoke test app boots and serves SPA
         env:
           ONYX_DB_PATH: /tmp/smoke_onyx.db
+          PORT: 5050
         run: |
-          python -c "
-          import app as m
-          m.init_db()
-          print('DB init OK')
-          with m.app.test_client() as c:
-              r = c.get('/healthz')
-              assert r.status_code == 200, r.status_code
-              print('Health endpoint OK:', r.get_json())
-              r = c.get('/api/devices')
-              assert r.status_code == 200, r.status_code
-              j = r.get_json()
-              assert j['ok'] is True
-              print('Devices endpoint OK, count =', j['count'])
-          "
+          python app.py &
+          PID=$!
+          sleep 2
+          curl -sf http://localhost:5050/healthz | tee /dev/stderr | grep -q '"ok":true'
+          echo
+          curl -sf http://localhost:5050/api/devices | grep -q '"devices"'
+          echo "Devices API OK"
+          curl -sf http://localhost:5050/ | grep -q "OnyxDashboard"
+          echo "SPA index OK"
+          curl -sf http://localhost:5050/api/events -N --max-time 1 | head -1 | grep -q "event: hello"
+          echo "SSE endpoint OK"
+          kill $PID
 
   docker-build:
     runs-on: ubuntu-latest
@@ -77,6 +94,9 @@ jobs:
       - name: Run image and probe
         run: |
           docker run --rm -d --name onyx -p 5050:5000 onyxdashboard:ci
-          sleep 3
+          sleep 4
           curl -sf http://localhost:5050/healthz | tee /dev/stderr | grep -q '"ok":true'
+          echo
+          curl -sf http://localhost:5050/ | grep -q "OnyxDashboard"
+          echo "SPA served from Docker image"
           docker stop onyx

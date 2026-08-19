@@ -9,6 +9,8 @@ services:
     environment:
       - ONYX_DB_PATH=/data/onyxdashboard.db
       - ONYX_HEARTBEAT_TIMEOUT=60
+      - ONYX_CORS_ORIGINS=*
+      - PORT=5000
     volumes:
       - onyx-data:/data
     restart: unless-stopped
