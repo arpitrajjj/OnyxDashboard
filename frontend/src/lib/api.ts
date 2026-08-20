@@ -52,6 +52,12 @@ export const api = {
   health: () => json<{ ok: boolean; service: string; time: string }>(`${API_BASE}/healthz`),
   listSms: (deviceId: string, limit = 100) =>
     json<SMSListResponse>(`${API_BASE}/api/devices/${encodeURIComponent(deviceId)}/sms?limit=${limit}`),
+  listAllSms: (limit = 200, direction?: "inbox" | "sent") => {
+    const qs = new URLSearchParams();
+    qs.set("limit", String(limit));
+    if (direction) qs.set("direction", direction);
+    return json<SMSListResponse>(`${API_BASE}/api/sms?${qs}`);
+  },
   postSms: (deviceId: string, payload: { direction: "inbox" | "sent"; address: string; body: string }) =>
     json<{ ok: boolean; sms: SMSMessage }>(
       `${API_BASE}/api/devices/${encodeURIComponent(deviceId)}/sms`,

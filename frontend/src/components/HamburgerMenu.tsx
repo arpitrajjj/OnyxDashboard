@@ -2,38 +2,40 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Code2,
   LayoutDashboard,
-  Radio,
-  Server,
+  MessageSquare,
   Smartphone,
   X,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import type { TabId } from "@/types";
 
 type NavItem = {
-  id: string;
+  id: TabId;
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: LucideIcon;
 };
 
 const items: NavItem[] = [
-  { id: "stats", label: "Home", icon: LayoutDashboard },
-  { id: "devices", label: "Devices", icon: Smartphone },
-  { id: "api", label: "API Reference", icon: Code2 },
+  { id: "overview", label: "Overview", icon: LayoutDashboard },
+  { id: "devices",  label: "Devices",  icon: Smartphone },
+  { id: "sms",      label: "SMS",      icon: MessageSquare },
+  { id: "api",      label: "API",      icon: Code2 },
 ];
 
 type Props = {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onJumpTo: (anchor: string) => void;
+  activeTab: TabId;
+  onTabChange: (tab: TabId) => void;
 };
 
 /**
- * Mobile hamburger slide-in menu. Slides in from the left with a backdrop.
- * Visible only on screens narrower than `lg` — desktop uses the Sidebar.
+ * Mobile hamburger slide-in menu — mirrors the desktop sidebar's tab list.
  */
-export function HamburgerMenu({ open, onOpenChange, onJumpTo }: Props) {
-  // Close on Escape (better UX + works for accessibility)
+export function HamburgerMenu({ open, onOpenChange, activeTab, onTabChange }: Props) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -89,14 +91,20 @@ export function HamburgerMenu({ open, onOpenChange, onJumpTo }: Props) {
             <nav className="flex flex-col gap-1 p-3">
               {items.map((it) => {
                 const Icon = it.icon;
+                const active = it.id === activeTab;
                 return (
                   <button
                     key={it.id}
                     onClick={() => {
-                      onJumpTo(it.id);
+                      onTabChange(it.id);
                       onOpenChange(false);
                     }}
-                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    className={cn(
+                      "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      active
+                        ? "bg-accent text-accent-foreground"
+                        : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                    )}
                   >
                     <Icon className="h-4 w-4" />
                     {it.label}
@@ -120,5 +128,3 @@ export function HamburgerMenu({ open, onOpenChange, onJumpTo }: Props) {
     </AnimatePresence>
   );
 }
-
-export { Radio, Server };

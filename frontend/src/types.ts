@@ -54,6 +54,8 @@ export type Theme = "dark" | "light";
 
 export type RefreshInterval = 0 | 5 | 10 | 30;
 
+export type TabId = "overview" | "devices" | "sms" | "api";
+
 export type SortKey = "name" | "device_id" | "model" | "os_version" | "app_version" | "ip_address" | "last_seen" | "online";
 
 export type SortDirection = "asc" | "desc";

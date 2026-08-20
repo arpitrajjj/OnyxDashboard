@@ -410,6 +410,36 @@ def api_get_sms(device_id):
     })
 
 
+@app.get("/api/sms")
+def api_get_all_sms():
+    """Global SMS feed — newest first across all devices.
+
+    Optional query params:
+      ?limit=N   — cap on number of messages (default 100, max 500)
+      ?direction=inbox|sent — filter by direction
+    """
+    limit = int(request.args.get("limit", "100"))
+    if limit < 1 or limit > 500:
+        limit = 100
+    direction = (request.args.get("direction") or "").strip().lower()
+    if direction and direction not in ("inbox", "sent"):
+        direction = ""
+    sql = "SELECT * FROM device_sms"
+    params = []
+    if direction:
+        sql += " WHERE direction=?"
+        params.append(direction)
+    sql += " ORDER BY datetime(received_at) DESC LIMIT ?"
+    params.append(limit)
+    rows = get_db().execute(sql, params).fetchall()
+    messages = [_serialize_sms(r) for r in rows]
+    return jsonify({
+        "ok": True,
+        "count": len(messages),
+        "messages": messages,
+    })
+
+
 # ---------------------------------------------------------------------------
 # SSE stream — /api/events
 # ---------------------------------------------------------------------------

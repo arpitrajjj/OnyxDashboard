@@ -265,6 +265,38 @@ def test_get_sms_returns_messages(client):
     assert body["messages"][0]["body"] == "msg 2"  # newest first
 
 
+def test_get_all_sms_returns_global_feed(client):
+    register(client, device_id="global-a")
+    register(client, device_id="global-b")
+    client.post("/api/devices/global-a/sms",
+                data=json.dumps({"direction": "inbox", "address": "+1", "body": "from A"}),
+                content_type="application/json")
+    client.post("/api/devices/global-b/sms",
+                data=json.dumps({"direction": "sent", "address": "+2", "body": "from B"}),
+                content_type="application/json")
+    r = client.get("/api/sms")
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["count"] == 2
+    # Each message should include the device_id so the UI can attribute it
+    device_ids = {m["device_id"] for m in body["messages"]}
+    assert "global-a" in device_ids and "global-b" in device_ids
+
+
+def test_get_all_sms_filter_by_direction(client):
+    register(client, device_id="filter-001")
+    client.post("/api/devices/filter-001/sms",
+                data=json.dumps({"direction": "inbox", "address": "+1", "body": "in"}),
+                content_type="application/json")
+    client.post("/api/devices/filter-001/sms",
+                data=json.dumps({"direction": "sent", "address": "+2", "body": "out"}),
+                content_type="application/json")
+    r = client.get("/api/sms?direction=inbox")
+    body = r.get_json()
+    assert body["count"] == 1
+    assert body["messages"][0]["direction"] == "inbox"
+
+
 def test_post_sms_publishes_sse_event(client):
     import queue as _q
     from app import _subscribers, _sub_lock
